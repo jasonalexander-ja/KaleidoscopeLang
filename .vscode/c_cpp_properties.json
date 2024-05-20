@@ -1,0 +1,33 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/homebrew/opt/llvm/include/**"
+            ],
+            "defines": [],
+            "macFrameworkPath": [
+                "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks"
+            ],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "macos-clang-arm64",
+            "compilerArgs": [
+                
+                "-I/opt/homebrew/Cellar/llvm/18.1.5/include ",
+                "-std=c++17 ",
+                "-stdlib=libc++   ",
+                "-D__STDC_CONSTANT_MACROS ",
+                "-D__STDC_FORMAT_MACROS ",
+                "-D__STDC_LIMIT_MACROS",
+                "-L/opt/homebrew/Cellar/llvm/18.1.5/lib ",
+                "-Wl,-search_paths_first ",
+                "-Wl,-headerpad_max_install_names",
+                "-lLLVM-18"
+            ]
+        }
+    ],
+    "version": 4
+}
