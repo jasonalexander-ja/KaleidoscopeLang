@@ -40,47 +40,47 @@ std::unique_ptr<PrototypeAST> LogErrorP(const char *Str)
 }
 
 
-Value* NumberExprAST::codegen()
+Value* NumberExprAST::codegen(LLVMContext& context, Module& mod, IRBuilder<>& builder, std::map<std::string, llvm::Value *>& namedVals)
 {
-    return ConstantFP::get(*TheContext, APFloat(Val));
+    return ConstantFP::get(context, APFloat(Val));
 }
 
-Value* VariableExprAST::codegen()
+Value* VariableExprAST::codegen(LLVMContext& context, Module& mod, IRBuilder<>& builder, std::map<std::string, llvm::Value *>& namedVals)
 {
     // Look this variable up in the function. 
-    Value* V = NamedValues[Name];
+    Value* V = namedVals[Name];
     if (!V)
         LogErrorV("Unknown variable name");
     return V;
 }
 
-Value* BinaryExprAST::codegen()
+Value* BinaryExprAST::codegen(LLVMContext& context, Module& mod, IRBuilder<>& builder, std::map<std::string, llvm::Value *>& namedVals)
 {
-    Value* L = LHS->codegen();
-    Value* R = RHS->codegen();
+    Value* L = LHS->codegen(context, mod, builder, namedVals);
+    Value* R = RHS->codegen(context, mod, builder, namedVals);
     if (!L || !R)
         return nullptr;
 
     switch (Op)
     {
         case '+':
-            return Builder->CreateFAdd(L, R, "addtmp");
+            return builder.CreateFAdd(L, R, "addtmp");
         case '-':
-            return Builder->CreateFSub(L, R, "addtmp");
+            return builder.CreateFSub(L, R, "addtmp");
         case '*':
-            return Builder->CreateFMul(L, R, "addtmp");
+            return builder.CreateFMul(L, R, "addtmp");
         case '<':
-            L = Builder->CreateFCmpULT(L, R, "cmptmp"); 
+            L = builder.CreateFCmpULT(L, R, "cmptmp"); 
             // Convert bool 0/1 to double 0.0 or 1.0
-            return Builder->CreateUIToFP(L, Type::getDoubleTy(*TheContext), "addtmp");
+            return builder.CreateUIToFP(L, Type::getDoubleTy(context), "addtmp");
     }
     return LogErrorV("invalid binary operator");
 }
 
-Value* CallExprAST::codegen()
+Value* CallExprAST::codegen(LLVMContext& context, Module& mod, IRBuilder<>& builder, std::map<std::string, llvm::Value *>& namedVals)
 {
     // Look up the name in the global module table. 
-    Function* CalleeF = TheModule->getFunction(Callee);
+    Function* CalleeF = mod.getFunction(Callee);
     if (CalleeF)
         return LogErrorV("Uknown function referenced");
     
@@ -91,23 +91,23 @@ Value* CallExprAST::codegen()
     std::vector<Value *> ArgsV;
     for (unsigned i = 0, e = Args.size(); i != e; i++)
     {
-        ArgsV.push_back(Args[i]->codegen());
+        ArgsV.push_back(Args[i]->codegen(context, mod, builder, namedVals));
         if (!Args.back())
             return nullptr;
     }
 
-    return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
+    return builder.CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
 
-Function* PrototypeAST::codegen()
+Function* PrototypeAST::codegen(LLVMContext& context, Module& mod, IRBuilder<>& builder, std::map<std::string, llvm::Value *>& namedVals)
 {
     // Make the function type: double(double, double) etc.
-    std::vector<Type*> Doubles(Args.size(), Type::getDoubleTy(*TheContext));
+    std::vector<Type*> Doubles(Args.size(), Type::getDoubleTy(context));
 
-    FunctionType* FT = FunctionType::get(Type::getDoubleTy(*TheContext), Doubles, false);
+    FunctionType* FT = FunctionType::get(Type::getDoubleTy(context), Doubles, false);
 
-    Function* F = Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
+    Function* F = Function::Create(FT, Function::ExternalLinkage, Name, mod);
 
     unsigned Idx = 0;
 
@@ -117,12 +117,12 @@ Function* PrototypeAST::codegen()
     return F;
 }
 
-Function* FunctionAST::codegen()
+Function* FunctionAST::codegen(LLVMContext& context, Module& mod, IRBuilder<>& builder, std::map<std::string, llvm::Value *>& namedVals)
 {
-    Function* TheFunction = TheModule->getFunction(Proto->getName());
+    Function* TheFunction = mod.getFunction(Proto->getName());
 
     if (!TheFunction)
-        TheFunction = Proto->codegen();
+        TheFunction = Proto->codegen(context, mod, builder, namedVals);
 
     if (!TheFunction)
         return nullptr;
@@ -131,17 +131,18 @@ Function* FunctionAST::codegen()
         return (Function*)LogErrorV("Function cannot be redefined. ");
 
     // Create a new basic block to start insertion into.
-    BasicBlock* BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
-    Builder->SetInsertPoint(BB);
+    BasicBlock* BB = BasicBlock::Create(context, "entry", TheFunction);
+    builder.SetInsertPoint(BB);
 
     // Record the function arguments in the NamedValues map. 
-    NamedValues.clear();
+    namedVals.clear();
     for (auto& Arg : TheFunction->args())
-        NamedValues[std::string(Arg.getName())] = &Arg;
+        namedVals[std::string(Arg.getName())] = &Arg;
 
-    if (Value* RetVal = Body->codegen())
+    if (Value* RetVal = Body->codegen(context, mod, builder, namedVals))
     {
         // Finish off the function.
+        builder.CreateRet(RetVal);
 
         // Validate the generated code, checking for consistency. 
         verifyFunction(*TheFunction);

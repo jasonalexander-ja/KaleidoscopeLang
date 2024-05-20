@@ -245,21 +245,11 @@ static std::unique_ptr<PrototypeAST> ParseExtern()
 // Top-Level parsing and JIT Driver 
 //===----------------------------------------------------------------------===//
 
-static void InitializeModule()
-{
-    // Open a new context and module.
-    TheContext = std::make_unique<LLVMContext>();
-    TheModule = std::make_unique<Module>("my cool jit", *TheContext);
-
-    // Create a new builder for the module.
-    Builder = std::make_unique<IRBuilder<>>(*TheContext);
-}
-
 static void HandleDefinition() 
 {
     if (auto FnAST = ParseDefinition()) 
     {
-        if (auto* FnIR = FnAST->codegen())
+        if (auto* FnIR = FnAST->codegen(*TheContext, *TheModule, *Builder, NamedValues))
         {
             fprintf(stderr, "Read function definition.\n");
             FnIR->print(errs());
@@ -277,7 +267,7 @@ static void HandleExtern()
 {
     if (auto ProtoAST = ParseExtern()) 
     {
-        if (auto* FnIR = ProtoAST->codegen())
+        if (auto* FnIR = ProtoAST->codegen(*TheContext, *TheModule, *Builder, NamedValues))
         {
             fprintf(stderr, "Parsed an extern\n");
             FnIR->print(errs());
@@ -299,7 +289,7 @@ static void HandleTopLevelExpression()
     // Evaluate a top-level expression into an anonymous function.
     if (auto FnAST = ParseTopLevelExpr()) 
     {
-        if (auto* FnIR = FnAST->codegen())
+        if (auto* FnIR = FnAST->codegen(*TheContext, *TheModule, *Builder, NamedValues))
         {
             fprintf(stderr, "Parsed a top-level expr\n");
             FnIR->print(errs());
